@@ -16,9 +16,11 @@
 
 package org.gradle.api.publish.plugins;
 
+import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.dsl.RepositoryHandler;
+import org.gradle.api.artifacts.repositories.ArtifactRepository;
 import org.gradle.api.internal.CollectionCallbackActionDecorator;
 import org.gradle.api.internal.DocumentationRegistry;
 import org.gradle.api.internal.FeaturePreviews;
@@ -44,6 +46,7 @@ public class PublishingPlugin implements Plugin<Project> {
 
     public static final String PUBLISH_TASK_GROUP = "publishing";
     public static final String PUBLISH_LIFECYCLE_TASK_NAME = "publish";
+    private static final String REPOSITORY_NAME_REGEX = "[A-Za-z0-9_\\-.]+";
 
     private final Instantiator instantiator;
     private final ArtifactPublicationServices publicationServices;
@@ -81,6 +84,18 @@ public class PublishingPlugin implements Plugin<Project> {
             projectPublicationRegistry.registerPublication(projectInternal, internalPublication);
         });
         bridgeToSoftwareModelIfNeeded((ProjectInternal) project);
+        validatePublishingModelWhenComplete(project, extension);
+    }
+
+    private void validatePublishingModelWhenComplete(Project project, PublishingExtension extension) {
+        project.afterEvaluate(projectAfterEvaluate -> {
+            for (ArtifactRepository repository : extension.getRepositories()) {
+                String repositoryName = repository.getName();
+                if (!repositoryName.matches(REPOSITORY_NAME_REGEX)) {
+                    throw new InvalidUserDataException("Repository name '" + repositoryName + "' is not valid for publication");
+                }
+            }
+        });
     }
 
     private void bridgeToSoftwareModelIfNeeded(ProjectInternal project) {
