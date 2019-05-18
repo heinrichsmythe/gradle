@@ -54,42 +54,18 @@ public class GradleBuildController implements BuildController {
 
     @Override
     public GradleInternal run() {
-        return doBuild(GradleInternal.BuildType.TASKS, new Action<GradleLauncher>() {
-            @Override
-            public void execute(@Nonnull GradleLauncher gradleLauncher) {
-                gradleLauncher.executeTasks();
-            }
-        });
+        return doBuild(GradleInternal.BuildType.TASKS, GradleLauncher::executeTasks);
     }
 
     @Override
     public GradleInternal configure() {
-        return doBuild(GradleInternal.BuildType.MODEL, new Action<GradleLauncher>() {
-            @Override
-            public void execute(@Nonnull GradleLauncher gradleLauncher) {
-                gradleLauncher.getConfiguredBuild();
-            }
-        });
+        return doBuild(GradleInternal.BuildType.MODEL, GradleLauncher::getConfiguredBuild);
     }
 
     private GradleInternal doBuild(final GradleInternal.BuildType buildType, final Action<? super GradleLauncher> build) {
         try {
             // TODO:pm Move this to RunAsBuildOperationBuildActionRunner when BuildOperationWorkerRegistry scope is changed
-            return workerLeaseService.withLocks(Collections.singleton(workerLeaseService.getWorkerLease()), new Factory<GradleInternal>() {
-                @Override
-                public GradleInternal create() {
-                    GradleInternal gradle = getGradle();
-                    try {
-                        gradle.setBuildType(buildType);
-                        GradleLauncher launcher = getLauncher();
-                        build.execute(launcher);
-                        launcher.finishBuild();
-                    } finally {
-                        gradle.setBuildType(GradleInternal.BuildType.NONE);
-                    }
-                    return gradle;
-                }
-            });
+            return workerLeaseService.withLocks(Collections.singleton(workerLeaseService.getWorkerLease()), new GradleInternalFactory(buildType, build));
         } finally {
             state = State.Completed;
         }
@@ -98,5 +74,29 @@ public class GradleBuildController implements BuildController {
     @Override
     public void stop() {
         gradleLauncher.stop();
+    }
+
+    private class GradleInternalFactory implements Factory<GradleInternal> {
+        private final GradleInternal.BuildType buildType;
+        private final Action<? super GradleLauncher> build;
+
+        public GradleInternalFactory(GradleInternal.BuildType buildType, Action<? super GradleLauncher> build) {
+            this.buildType = buildType;
+            this.build = build;
+        }
+
+        @Override
+        public GradleInternal create() {
+            GradleInternal gradle = getGradle();
+            try {
+                gradle.setBuildType(buildType);
+                GradleLauncher launcher = getLauncher();
+                build.execute(launcher);
+                launcher.finishBuild();
+            } finally {
+                gradle.setBuildType(GradleInternal.BuildType.NONE);
+            }
+            return gradle;
+        }
     }
 }
